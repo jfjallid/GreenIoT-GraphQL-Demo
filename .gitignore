@@ -1,3 +1,6 @@
+.idea
+pre-commit-hook.sh
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
