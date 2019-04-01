@@ -4,8 +4,15 @@ import json
 from elasticsearch import Elasticsearch
 from dateutil.parser import parse
 import datetime
+import os
 
-es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+elastic_host = os.environ['ELASTIC_HOST']
+if not elastic_host:
+    elastic_host = 'localhost'
+elastic_port = os.environ['ELASTIC_PORT']
+if not elastic_port:
+    elastic_port = 9200
+es = Elasticsearch([{'host': elastic_host, 'port': elastic_port}])
 
 
 class CustomGrapheneDateTime(DateTime):
