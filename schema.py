@@ -45,16 +45,16 @@ class Query(ObjectType):
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
-        from_date=String(description="yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
-        to_date=String(description="yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
+        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
+        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
     )
     avgbydate = Field(
         Aggregate,
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
-        from_date=String(description="yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
-        to_date=String(description="yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
+        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
+        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
     )
 
     def resolve_measurements(
@@ -64,7 +64,7 @@ class Query(ObjectType):
 
         if sensor_type not in allowed_types:
             sensor_type = None
-        if (amount < 0) or (amount > 100):
+        if (amount < 0) or (amount > 1000):
             amount = 10
         if not from_date:
             # Default to 1 week back in time
@@ -88,12 +88,15 @@ class Query(ObjectType):
                                         'to': to_date,
                                     }
                                 }
-                            },
+                            }
                         ]
                     }
                 },
                 'size': amount,
-            }  # Perhaps sort the results.
+                "sort": [
+                    {"timestamp": {"order": "asc"}}
+                ]
+            }
             res = es.search(index='measurements-*', body=query)['hits']['hits']
         else:
             res = es.search(index='measurements-*')['hits']['hits']
@@ -117,21 +120,22 @@ class Query(ObjectType):
                 'bool': {
                     'filter': [
                         {'wildcard': {'n': sensor_type}},
-                        {'range': {'timestamp': {'from': from_date, 'to': to_date}}},
+                        {'range': {'timestamp': {'from': from_date, 'to': to_date}}}
                     ]
                 }
             },
             '_source': 'false',
             'aggs': {
                 'avg': {'avg': {'field': 'v'}},
-                'units': {'terms': {'field': 'u.keyword', 'size': '2'}},
-            },
+                'units': {'terms': {'field': 'u.keyword', 'size': '2'}}
+            }
         }
         res = es.search(index='measurements-*', body=query, filter_path='aggregations')
         data = dict()
         data['avg'] = res['aggregations']['avg']['value']
-        if len(res['aggregations']['units']['buckets']) != 1:
+        buckets = len(res['aggregations']['units']['buckets'])
+        if buckets > 1:
             raise Exception("Multiple different units in aggregation!")
-
-        data['unit'] = res['aggregations']['units']['buckets'][0]['key']
+        elif buckets == 1:
+            data['unit'] = res['aggregations']['units']['buckets'][0]['key']
         return _json2obj(json.dumps(data))
