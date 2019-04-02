@@ -6,10 +6,10 @@ from dateutil.parser import parse
 import datetime
 import os
 
-elastic_host = os.environ['ELASTIC_HOST']
+elastic_host = os.environ.get('ELASTIC_HOST')
 if not elastic_host:
     elastic_host = 'localhost'
-elastic_port = os.environ['ELASTIC_PORT']
+elastic_port = os.environ.get('ELASTIC_PORT')
 if not elastic_port:
     elastic_port = 9200
 es = Elasticsearch([{'host': elastic_host, 'port': elastic_port}])
