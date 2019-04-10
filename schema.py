@@ -44,6 +44,14 @@ def _json2obj(data):
     return json.loads(data, object_hook=_json_object_hook)
 
 
+def _parse_date(date_string):
+    try:
+        date  = datetime.datetime.strptime(date_string, '%Y-%m-%dt%H:%M:%S')
+    except ValueError:
+        raise ValueError("Incorrect date format, should be yyyy-MM-dd'T'HH:mm:ss")
+    return date
+
+
 class Query(ObjectType):
     measurements = List(
         Measurement,
@@ -52,23 +60,22 @@ class Query(ObjectType):
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
-        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
-        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
+        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'HH:mm:ss, e.g. 2019-01-01T10:00:00"),
+        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'HH:mm:ss, e.g. 2019-01-07T10:00:00"),
     )
     avgbydate = Field(
         Aggregate,
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
-        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-01T10:00:00"),
-        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'hh:mm:ss, e.g. 2019-01-07T10:00:00"),
+        from_date=String(description="UTC Timestamp: yyyy-MM-dd'T'HH:mm:ss, e.g. 2019-01-01T10:00:00"),
+        to_date=String(description="UTC Timestamp: yyyy-MM-dd'T'HH:mm:ss, e.g. 2019-01-07T10:00:00"),
     )
 
     def resolve_measurements(
             _self, info, sensor_name=None, amount=10, sensor_type=None, from_date=None, to_date=None, **kwargs
     ):
         allowed_types = ['temp', 'humidity', 'pressure', 'pm1', 'pm2_5', 'pm10', 'no2']
-
         if sensor_type not in allowed_types:
             sensor_type = None
         if (amount < 0) or (amount > 1000):
@@ -78,6 +85,11 @@ class Query(ObjectType):
             from_date = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S')
         if not to_date:
             to_date = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        if _parse_date(from_date).date() == _parse_date(to_date).date():  # Same day
+            index_name = f"measurements-{from_date.split('T')[0]}"
+        else:
+            index_name = 'measurements-*'
+
         if sensor_name:
             if sensor_type:
                 n_query = f'{sensor_name}*{sensor_type}'
@@ -104,9 +116,9 @@ class Query(ObjectType):
                     {"timestamp": {"order": "asc"}}
                 ]
             }
-            res = es.search(index='measurements-*', body=query)['hits']['hits']
+            res = es.search(index=index_name, body=query)['hits']['hits']
         else:
-            res = es.search(index='measurements-*')['hits']['hits']
+            res = es.search(index=index_name)['hits']['hits']
 
         return [_json2obj(json.dumps(x['_source'])) for x in res]
 
@@ -121,6 +133,9 @@ class Query(ObjectType):
             from_date = (datetime.datetime.utcnow() - datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S')
         if not to_date:
             to_date = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+        _validate_date(from_date)
+        _validate_date(to_date)
 
         query = {
             'query': {
