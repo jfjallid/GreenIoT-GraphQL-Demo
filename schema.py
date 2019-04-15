@@ -1,4 +1,4 @@
-from graphene import ObjectType, Field, String, Float, DateTime, List, Int
+from graphene import ObjectType, Field, String, Float, DateTime, List, Int, Boolean
 from collections import namedtuple
 import json
 from elasticsearch import Elasticsearch
@@ -24,11 +24,15 @@ class CustomGrapheneDateTime(DateTime):
 
 
 class Measurement(ObjectType):
-    u = String()
-    v = Float()
-    n = String()
-    uuid = String()
-    timestamp = CustomGrapheneDateTime()
+    u = String(description='Measurement unit e.g., %RH')
+    v = Float(description='Integer value')
+    vs = String(description='String value')
+    vb = Boolean(description='Boolean value')
+    n = String(description='Sensor name')
+    ut = Float(description='Update time')
+    sum = Float(description='Sum')
+    uuid = String(description='Unique measurement ID')
+    timestamp = CustomGrapheneDateTime(description='Timestamp for when measurement was received')
 
 
 class Aggregate(ObjectType):
@@ -75,7 +79,8 @@ class Query(ObjectType):
     def resolve_measurements(
             _self, info, sensor_name=None, amount=10, sensor_type=None, from_date=None, to_date=None, **kwargs
     ):
-        allowed_types = ['temp', 'humidity', 'pressure', 'pm1', 'pm2_5', 'pm10', 'no2']
+        allowed_types = ['temp', 'humidity', 'pressure', 'pm1', 'pm2_5', 'pm10', 'no2', 'SoC:temp', 'WiFi:ESSID',
+                         'WiFi:ch', 'hostname', 'uptime']
         if sensor_type not in allowed_types:
             sensor_type = None
         if (amount < 0) or (amount > 1000):
@@ -89,37 +94,35 @@ class Query(ObjectType):
             index_name = f"measurements-{from_date.split('T')[0]}"
         else:
             index_name = 'measurements-*'
+        if not sensor_name:
+            sensor_name = 'urn:dev'
 
-        if sensor_name:
-            if sensor_type:
-                n_query = f'{sensor_name}*{sensor_type}'
-            else:
-                n_query = f'{sensor_name}*'
-            query = {
-                'query': {
-                    'bool': {
-                        'filter': [
-                            {'wildcard': {'n.keyword': n_query}},
-                            {
-                                'range': {
-                                    'timestamp': {
-                                        'from': from_date,
-                                        'to': to_date,
-                                    }
+        if sensor_type:
+            n_query = f'{sensor_name}*{sensor_type}'
+        else:
+            n_query = f'{sensor_name}*'
+        query = {
+            'query': {
+                'bool': {
+                    'filter': [
+                        {'wildcard': {'n.keyword': n_query}},
+                        {
+                            'range': {
+                                'timestamp': {
+                                    'from': from_date,
+                                    'to': to_date,
                                 }
                             }
-                        ]
-                    }
-                },
-                'size': amount,
-                "sort": [
-                    {"timestamp": {"order": "asc"}}
-                ]
-            }
-            res = es.search(index=index_name, body=query)['hits']['hits']
-        else:
-            res = es.search(index=index_name)['hits']['hits']
-
+                        }
+                    ]
+                }
+            },
+            'size': amount,
+            "sort": [
+                {"timestamp": {"order": "asc"}}
+            ]
+        }
+        res = es.search(index=index_name, body=query)['hits']['hits']
         return [_json2obj(json.dumps(x['_source'])) for x in res]
 
     def resolve_avgbydate(_self, info, sensor_type=None, from_date=None, to_date=None, **kwargs):
@@ -134,8 +137,8 @@ class Query(ObjectType):
         if not to_date:
             to_date = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
-        _validate_date(from_date)
-        _validate_date(to_date)
+        _parse_date(from_date)
+        _parse_date(to_date)
 
         query = {
             'query': {
