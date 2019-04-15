@@ -24,11 +24,11 @@ class CustomGrapheneDateTime(DateTime):
 
 
 class Measurement(ObjectType):
+    n = String(description='Sensor name')
     u = String(description='Measurement unit e.g., %RH')
     v = Float(description='Integer value')
     vs = String(description='String value')
     vb = Boolean(description='Boolean value')
-    n = String(description='Sensor name')
     ut = Float(description='Update time')
     sum = Float(description='Sum')
     uuid = String(description='Unique measurement ID')
@@ -50,7 +50,7 @@ def _json2obj(data):
 
 def _parse_date(date_string):
     try:
-        date  = datetime.datetime.strptime(date_string, '%Y-%m-%dt%H:%M:%S')
+        date = datetime.datetime.strptime(date_string, '%Y-%m-%dt%H:%M:%S')
     except ValueError:
         raise ValueError("Incorrect date format, should be yyyy-MM-dd'T'HH:mm:ss")
     return date
@@ -59,8 +59,9 @@ def _parse_date(date_string):
 class Query(ObjectType):
     measurements = List(
         Measurement,
+        description='Retrieve measurements based on name and type.',
         sensor_name=String(description='name of the sensor e.g., urn:dev:mac:fcc23d000000050f'),
-        amount=Int(),
+        amount=Int(description='Number of measurements to retrieve. 1-100, default is 10.'),
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
@@ -69,6 +70,7 @@ class Query(ObjectType):
     )
     avgbydate = Field(
         Aggregate,
+        description='Calculate average value of measurement type, e.g., average temp.',
         sensor_type=String(
             description='Choose sensor type from: temp, humidity, pressure, pm1, pm2_5, pm10, no2'
         ),
@@ -83,7 +85,7 @@ class Query(ObjectType):
                          'WiFi:ch', 'hostname', 'uptime']
         if sensor_type not in allowed_types:
             sensor_type = None
-        if (amount < 0) or (amount > 1000):
+        if (amount < 0) or (amount > 100):
             amount = 10
         if not from_date:
             # Default to 1 week back in time
